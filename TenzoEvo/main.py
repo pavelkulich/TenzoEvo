@@ -17,7 +17,6 @@ man.get_significant_points()
 new_measured_data = man.get_measured_data()
 
 model = models.Model('dynamic_double_pasternak')
-gen_algs = ga.GA(model, new_measured_data, 5000, 50, man)
+gen_algs = ga.GA(model, new_measured_data, 6, 400, man)
 gen_algs.run_optimization()
 
-print(gen_algs.get_init_population())

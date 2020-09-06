@@ -2,6 +2,8 @@ import models
 import random
 import pandas as pd
 import ga_config
+import matplotlib.pyplot as plt
+from scipy import spatial
 
 
 class GA:
@@ -11,7 +13,8 @@ class GA:
         self.__populations = Populations()
         self.__pop_size = pop_size
         self.__num_of_populations = num_of_populations
-        self.__number_of_peaks = measured_data['min'].notna().sum()
+        self.__num_of_peaks = measured_data['min'].notna().sum()
+        self.__peaks = measured_data[measured_data['min'].notna()].reset_index(drop=True)
         self.__manipulator = manipulator
 
     def get_init_population(self):
@@ -21,94 +24,110 @@ class GA:
         elif self.__model.get_model_type() == 'dynamic_double_pasternak':
             params = ga_config.DYNAMIC_DOUBLE_PASTERNAK
 
-        pop = []
+        param_pop = []
+        q_pop = []
         for i in range(self.__pop_size):
-            chromosome = []
+            param_chromosome = []
+            q_chromosome = []
             for param in params:
                 if param[2] == 0:
                     gene = param[1]
                 else:
                     gene = random.randrange(param[1], param[2])
-                chromosome.append(gene)
+                param_chromosome.append(gene)
 
-            head = list(param[0] for param in params)
+            param_pop.append(param_chromosome)
+            param_head = list(param[0] for param in params)
 
-            for i in range(self.__number_of_peaks):
+            q_head = []
+            for i in range(self.__num_of_peaks):
                 q = ga_config.Q
                 gene = random.randrange(q[1], q[2])
-                chromosome.append(gene)
-                head.append(f'{q[0]}{i + 1}')
+                q_chromosome.append(gene)
+                q_head.append(f'{q[0]}{i + 1}')
 
-            pop.append(chromosome)
+            q_pop.append(q_chromosome)
 
-        population = pd.DataFrame(pop, columns=head)
-        return population
+        param_population = pd.DataFrame(param_pop, columns=param_head)
+        q_population = pd.DataFrame(q_pop, columns=q_head)
+        return param_population, q_population
 
     def run_optimization(self):
-        population = self.get_init_population()
-        self.__optimize(population, 1, False)
+        param_population, q_population = self.get_init_population()
+        self.__optimize(param_population, q_population, 1, False)
 
-    def __optimize(self, population, iteration, mutation):
+    def __optimize(self, param_population, q_population, iteration, mutation):
         if iteration <= self.__num_of_populations:
-            cols = list(population.columns)
+            cols = list(param_population.columns)
             new_population = Population(cols, iteration, self.__model)
-            for index, params in population.iterrows():
-                print(f'population {iteration}, chromosome {index}')
-                analytical_data = self.__model.calculate_model(params)
-                # man = dtm.Manipulator(self.__measured_data.copy())
 
+            for index, params in param_population.iterrows():
+                moved_analytical_data_list = []
+                q_vector = q_population.iloc[index]
+                counter = 0
+                analytical_data = None
+                for _, q_value in q_vector.iteritems():
+                    # print(self.__peaks.iloc[counter])
+                    analytical_data = self.__model.calculate_model(params, q_value)
+                    moved_analytical_data = self.__manipulator.move_analytical_data(analytical_data,
+                                                                                    self.__peaks.iloc[counter])
+                    moved_analytical_data_list.append(moved_analytical_data)
+                    counter += 1
                 # data manipulation
+                # print(analytical_data)
                 self.__manipulator.set_analytical_data(analytical_data)
                 # man.get_significant_points()
                 # man.adjust_q_vector()
-
                 # q_vector = man.get_adjusted_q_vector() * params['Q']
-
-                self.__manipulator.move_and_superpose()
+                self.__manipulator.superpose_analytical_data(moved_analytical_data_list)
                 super_data = self.__manipulator.get_superposed_resampled()
                 measured_data = self.__manipulator.get_measured_data()
 
+                # plt.plot(measured_data)
+                # plt.plot(super_data)
+                # plt.show()
+
+                # TODO: pokracovat tady
                 # fitness calculation
                 fitness = self.__calculate_fitness(measured_data, super_data)
-                params['fitness'] = fitness
+                # params['fitness'] = fitness
                 # params = params.append(q_vector.iloc[0])
-                new_population.add_chromosome(params)
-
-            self.__populations.add_population(new_population)
-            new_population.write_log()
-            new_population.perform_selection()
-            new_population.perform_crossover()
+        #         new_population.add_chromosome(params)
+        #
+        #     self.__populations.add_population(new_population)
+        #     new_population.write_log()
+        #     new_population.perform_selection()
+        #     new_population.perform_crossover()
+            print(iteration)
             iteration += 1
-
-            if mutation:
-                new_population.perform_mutation()
-                return self.__optimize(new_population.get_mutation_product(), iteration, mutation)
-
-            return self.__optimize(new_population.get_crossover_product(), iteration, mutation)
-
-        best_params = self.__populations.get_last_population().get_max_fitness_row()
-        best_analytical_data = self.__model.calculate_model(best_params)
-        best_params.astype(int, errors='ignore').to_csv('logs/best_solution.txt')
-
-        # man = self.__manipulator.Manipulator(self.__measured_data.copy())
-
-        # data manipulation
-        self.__manipulator.set_analytical_data(best_analytical_data)
-        # man.get_significant_points()
-        # man.adjust_q_vector()
-
-        self.__manipulator.move_and_superpose()
-        super_data = self.__manipulator.get_superposed_resampled()
-        measured_data = self.__manipulator.get_measured_data()
-
-        # plotter.plot_deflection_for_ga(measured_data, super_data)
-
-        return None
+            return self.__optimize(param_population, q_population, iteration, mutation)
+        #
+        #     if mutation:
+        #         new_population.perform_mutation()
+        #         return self.__optimize(new_population.get_mutation_product(), iteration, mutation)
+        #
+        #     return self.__optimize(new_population.get_crossover_product(), iteration, mutation)
+        #
+        # best_params = self.__populations.get_last_population().get_max_fitness_row()
+        # best_analytical_data = self.__model.calculate_model(best_params)
+        # best_params.astype(int, errors='ignore').to_csv('logs/best_solution.txt')
+        #
+        # # man = self.__manipulator.Manipulator(self.__measured_data.copy())
+        #
+        # # data manipulation
+        # self.__manipulator.set_analytical_data(best_analytical_data)
+        # # man.get_significant_points()
+        # # man.adjust_q_vector()
+        #
+        # self.__manipulator.move_and_superpose()
+        # super_data = self.__manipulator.get_superposed_resampled()
+        # measured_data = self.__manipulator.get_measured_data()
 
 
 
-
-
+    def __calculate_fitness(self, measured_data, analytical_data):
+        result = 1 - spatial.distance.cosine(measured_data['y_axis'], analytical_data['y_axis'])
+        return int(result * 10000)
 
 
 class Population:
@@ -219,12 +238,6 @@ class Population:
     def write_log(self):
         int_population = self.__population.astype(int, errors='ignore')
         int_population.to_csv(f'logs/population_{self.__population_id}.txt')
-
-
-
-
-
-
 
 
 class Populations:

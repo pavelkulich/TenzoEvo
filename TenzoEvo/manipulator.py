@@ -42,11 +42,11 @@ class Manipulator:
     def get_measured_data(self):
         return self.measured_data
 
-    def adjust_q_vector(self):
-        for i in range(self.measured_data['y_axis'][self.measured_data['min'] < 0].shape[0]):
-            local_min = self.measured_data['y_axis'][self.measured_data['min'] < 0].iloc[i]
-            q = local_min / np.min(self.analytical_data['y_axis'])
-            self.q_vector[f'Q_{10 + i}'] = pd.DataFrame(columns=[f'Q_{i}'], data=[q])[f'Q_{i}']
+    # def adjust_q_vector(self):
+    #     for i in range(self.measured_data['y_axis'][self.measured_data['min'] < 0].shape[0]):
+    #         local_min = self.measured_data['y_axis'][self.measured_data['min'] < 0].iloc[i]
+    #         q = local_min / np.min(self.analytical_data['y_axis'])
+    #         self.q_vector[f'Q_{10 + i}'] = pd.DataFrame(columns=[f'Q_{i}'], data=[q])[f'Q_{i}']
 
     def get_adjusted_q_vector(self):
         return self.q_vector
@@ -61,6 +61,46 @@ class Manipulator:
             print(f'Superposed resampled data equals {self.superposed_analytical_data_resampled}')
         return self.superposed_analytical_data_resampled
 
+    def move_analytical_data(self, analytical_data, min_row):
+        moved_analytical_data = self.__get_new_x_axis(analytical_data, min_row)
+        return moved_analytical_data
+
+    def superpose_analytical_data(self, moved_analytical_data_list):
+        # print(moved_analytical_data_list)
+        counter = 1
+        data_list = []
+        for moved_analytical_data in moved_analytical_data_list:
+            if counter != 1:
+                idx = moved_analytical_data.iloc[(prev_moved_analytical_data['x_axis'] - np.min(
+                    moved_analytical_data['x_axis'])).abs().argsort()[:1]].index[0]
+                moved_analytical_data = moved_analytical_data.set_index(
+                    moved_analytical_data.index + idx + prev_moved_analytical_data.idxmin()[0])
+
+            prev_moved_analytical_data = moved_analytical_data.copy()
+            moved_analytical_data.columns = [f'x_axis_{counter}', f'y_axis_{counter}']
+            data_list.append(moved_analytical_data)
+            counter += 1
+
+        presup_analytical_data = pd.concat(data_list, axis=1)
+
+        sup_analytical_data = pd.DataFrame()
+
+        for iter in range(1, counter):
+            if iter != 1:
+                sup_analytical_data['x_axis'] = sup_analytical_data['x_axis'].combine_first(
+                    presup_analytical_data[f'x_axis_{iter}'])
+                sup_analytical_data['y_axis'] = sup_analytical_data['y_axis'] + presup_analytical_data[
+                    f'y_axis_{iter}'].fillna(0)
+            else:
+                sup_analytical_data['x_axis'] = presup_analytical_data[f'x_axis_{iter}']
+                sup_analytical_data['y_axis'] = presup_analytical_data[f'y_axis_{iter}'].fillna(0)
+
+        # crop tails
+        self.superposed_analytical_data, self.measured_data = self.__crop_tails(sup_analytical_data)
+
+        # resample data
+        self.superposed_analytical_data_resampled = self.__resample_data()
+
     def move_and_superpose(self):
         if self.analytical_data is not None:
             if 'min' in self.measured_data.columns:
@@ -68,9 +108,10 @@ class Manipulator:
                 counter = 1
                 data_list = []
                 for _, row in measured_mins.iterrows():
+                    print(row)
                     moved_analytical_data = self.__get_new_x_axis(row)
-                    moved_analytical_data['y_axis'] = moved_analytical_data['y_axis'] * \
-                                                      self.q_vector[f'Q_{10 + counter - 1}'][0]
+                    # moved_analytical_data['y_axis'] = moved_analytical_data['y_axis'] * \
+                    #                                   self.q_vector[f'Q_{10 + counter - 1}'][0]
 
                     if counter != 1:
                         idx = moved_analytical_data.iloc[(prev_moved_analytical_data['x_axis'] - np.min(
@@ -80,6 +121,8 @@ class Manipulator:
 
                     prev_moved_analytical_data = moved_analytical_data.copy()
                     moved_analytical_data.columns = [f'x_axis_{counter}', f'y_axis_{counter}']
+
+                    # odtud to bude stejny
                     data_list.append(moved_analytical_data)
                     # plt.plot(moved_analytical_data[f'x_axis_{counter}'], moved_analytical_data[f'y_axis_{counter}'])
                     counter += 1
@@ -185,27 +228,50 @@ class Manipulator:
 
         return sup_analytical_data, measured_data
 
-    def __get_new_x_axis(self, row):
-        analytical_min = self.analytical_data[
-            self.analytical_data['y_axis'] == self.analytical_data['y_axis'].min()]
+    def __get_new_x_axis(self, analytical_data, row):
+        analytical_min = analytical_data[
+            analytical_data['y_axis'] == analytical_data['y_axis'].min()]
         first_index = 0
-        last_index = self.analytical_data.index[-1]
+        last_index = analytical_data.index[-1]
         extreme_index = analytical_min.index[0]
 
-        analytical_first_new_x = self.analytical_data['x_axis'][first_index] + row['x_axis']
-        analytical_last_new_x = self.analytical_data['x_axis'][last_index] + row['x_axis']
-        analytical_extreme_new_x = self.analytical_data['x_axis'][extreme_index] + row['x_axis']
+        analytical_first_new_x = analytical_data['x_axis'][first_index] + row['x_axis']
+        analytical_last_new_x = analytical_data['x_axis'][last_index] + row['x_axis']
+        analytical_extreme_new_x = analytical_data['x_axis'][extreme_index] + row['x_axis']
 
         new_x_r = np.linspace(analytical_extreme_new_x, analytical_last_new_x,
                               last_index - extreme_index + 1)
+        sampling_interval = np.abs(analytical_data['x_axis'][1] - analytical_data['x_axis'][0])
         new_x_l = np.linspace(analytical_first_new_x,
-                              analytical_extreme_new_x - self.analytical_sampling_interval, extreme_index)
+                              analytical_extreme_new_x - sampling_interval, extreme_index)
         new_x = np.concatenate((new_x_l, new_x_r))
-        moved_analytical_data = self.analytical_data.copy()
+        moved_analytical_data = analytical_data.copy()
         moved_analytical_data['x_axis'] = new_x
         # print(moved_analytical_data)
 
         return moved_analytical_data
+
+    # def __get_new_x_axis(self, row):
+    #     analytical_min = self.analytical_data[
+    #         self.analytical_data['y_axis'] == self.analytical_data['y_axis'].min()]
+    #     first_index = 0
+    #     last_index = self.analytical_data.index[-1]
+    #     extreme_index = analytical_min.index[0]
+    #
+    #     analytical_first_new_x = self.analytical_data['x_axis'][first_index] + row['x_axis']
+    #     analytical_last_new_x = self.analytical_data['x_axis'][last_index] + row['x_axis']
+    #     analytical_extreme_new_x = self.analytical_data['x_axis'][extreme_index] + row['x_axis']
+    #
+    #     new_x_r = np.linspace(analytical_extreme_new_x, analytical_last_new_x,
+    #                           last_index - extreme_index + 1)
+    #     new_x_l = np.linspace(analytical_first_new_x,
+    #                           analytical_extreme_new_x - self.analytical_sampling_interval, extreme_index)
+    #     new_x = np.concatenate((new_x_l, new_x_r))
+    #     moved_analytical_data = self.analytical_data.copy()
+    #     moved_analytical_data['x_axis'] = new_x
+    #     # print(moved_analytical_data)
+    #
+    #     return moved_analytical_data
 
     # method resamples data to base_data base
     def __resample_data(self):

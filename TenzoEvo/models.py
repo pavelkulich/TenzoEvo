@@ -21,11 +21,11 @@ class Model:
     def get_model_type(self):
         return self.type
 
-    def calculate_model(self, params):
+    def calculate_model(self, params, q):
         if self.type == 'dynamic_double_pasternak':
-            return self.dynamic_double_pasternak(params)
+            return self.dynamic_double_pasternak(params, q)
         elif self.type == 'dynamic_single_winkler':
-            return self.dynamic_single_winkler(params)
+            return self.dynamic_single_winkler(params, q)
         elif self.type == 'dynamic_double_winkler':
             pass
         elif self.type == 'dynamic_single_pasternak':
@@ -33,13 +33,12 @@ class Model:
         else:
             return None
 
-    def dynamic_single_winkler(self, params):
+    def dynamic_single_winkler(self, params, q):
         ei = params['EI']
         m = params['m']
         c = params['c']
         k = params['k']
         v = params['v']
-        q = params['Q']
 
         lmbd = np.power((k / (4 * ei)), 0.25)
         char_len = 1 / lmbd
@@ -80,7 +79,7 @@ class Model:
 
         return df_from_lists(x_axis, -np.real(defl) * 10000)
 
-    def dynamic_double_pasternak(self, params):
+    def dynamic_double_pasternak(self, params, q):
         ei1 = params['EI_1']
         ei2 = params['EI_2']
         ga = params['GA']
@@ -91,7 +90,6 @@ class Model:
         m1 = params['m_1']
         m2 = params['m_2']
         v = params['v']
-        q = params['Q']
 
         s_r = np.linspace(0, self.x_interval, 500)
         s_l = np.linspace(-self.x_interval, 0, 500)
@@ -214,9 +212,9 @@ class Model:
 
         if self.moment:
             mom = np.diff(np.diff(w1))
-            return df_from_lists(x_axis, -np.real(mom) * 10000)
+            return df_from_lists(x_axis, -np.real(mom) * 1000000000)
 
-        return df_from_lists(x_axis, np.real(w1) * 10000)
+        return df_from_lists(x_axis, np.real(w1) * 1000)
 
 
 def df_from_lists(x_axis, y_axis):
