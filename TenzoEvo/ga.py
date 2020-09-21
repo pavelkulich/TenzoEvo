@@ -126,7 +126,7 @@ class GA:
     #     return int(result * 10000)
 
     def __calculate_fitness(self, measured_data, analytical_data):
-        diff = np.sum((measured_data['y_axis'] / 100000 - analytical_data['y_axis'] / 100000) ** 2)
+        diff = np.sum((measured_data['y_axis'] / 10000000000 - analytical_data['y_axis'] / 10000000000) ** 2)
         print(diff)
         lmbd = lambda x: 1 if x <= 0 else x
         return lmbd(int(diff ** (-1)))

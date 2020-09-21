@@ -74,8 +74,10 @@ class Model:
         x_axis = np.concatenate((s_l[:-1], s_r)) * char_len / v
 
         if self.moment:
-            mom = np.diff(np.diff(defl))
-            return df_from_lists(x_axis, np.real(mom) * 100)
+            diff_x = np.diff(x_axis)
+            first_diff = np.diff(defl) / diff_x
+            second_diff = np.diff(first_diff) / diff_x[1:]
+            return df_from_lists(x_axis, np.real(second_diff * 1000000))
 
         return df_from_lists(x_axis, -np.real(defl) * 10000)
 
@@ -214,7 +216,7 @@ class Model:
             diff_x = np.diff(x_axis)
             first_diff = np.diff(w1)/diff_x
             second_diff = np.diff(first_diff)/diff_x[1:]
-            return df_from_lists(x_axis, -np.real(second_diff))
+            return df_from_lists(x_axis, -np.real(second_diff * 10000))
 
         return df_from_lists(x_axis, np.real(w1))
 

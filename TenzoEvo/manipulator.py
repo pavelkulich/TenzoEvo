@@ -14,7 +14,7 @@ class Manipulator:
         self.superposed_analytical_data = None
         self.superposed_analytical_data_resampled = None
 
-    def get_significant_points(self, order=10, tolerance=400):
+    def get_significant_points(self, order=10, tolerance=15000):
         self.measured_data['min'] = \
             self.measured_data.iloc[argrelextrema(self.measured_data['y_axis'].values, np.less_equal, order=order)[0]][
                 'y_axis']
